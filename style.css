@@ -1,0 +1,183 @@
+* { box-sizing: border-box; }
+body {
+  font-family: 'Sarabun', sans-serif;
+  margin: 0;
+  color: #3b2a20;
+  background: #4a3228;
+  background-image: repeating-linear-gradient(
+    90deg, rgba(0,0,0,.08) 0 2px, transparent 2px 40px);
+}
+.wrap { max-width: 900px; margin: 0 auto; padding: 12px; }
+
+/* ===== แถบบนสุด ===== */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: #2b1a12;
+  border-bottom: 4px solid #c9a24a;
+  color: #f6e8c8;
+}
+.brand {
+  font-family: 'Mitr', sans-serif;
+  font-size: 1.2rem;
+  white-space: nowrap;
+}
+#authArea { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.hello { font-size: .9rem; }
+.topbar button { padding: 6px 12px; font-size: .9rem; }
+.topbar button.outline {
+  background: transparent;
+  border: 1px solid #c9a24a;
+  color: #f6e8c8;
+}
+
+/* ===== แท็บหมวดหมู่ ===== */
+.catnav {
+  background: #6b2d1f;
+  box-shadow: 0 4px 10px rgba(0,0,0,.35);
+}
+.tabs {
+  display: flex;
+  overflow-x: auto;
+  white-space: nowrap;
+  padding: 0 8px;
+}
+.tab {
+  background: transparent;
+  color: #f6e8c8;
+  border: none;
+  border-bottom: 4px solid transparent;
+  border-radius: 0;
+  padding: 12px 14px;
+  font-size: .95rem;
+  margin: 0;
+}
+.tab:hover { background: rgba(255,255,255,.1); }
+.tab.active {
+  border-bottom-color: #c9a24a;
+  background: rgba(0,0,0,.25);
+  font-weight: 600;
+}
+#subPanel { background: #fbf3e0; }
+.sub-list {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 8px 12px;
+}
+.sub-item {
+  display: block;
+  width: 100%;
+  margin: 3px 0;
+  padding: 9px 12px;
+  text-align: left;
+  background: #f5e9c8;
+  color: #5a3a22;
+  border: 1px solid #e0cfa6;
+  border-radius: 6px;
+  font-size: .92rem;
+}
+.sub-item:hover { background: #ecdcae; }
+.sub-item.active {
+  background: #2f5d50;
+  color: #fff;
+  border-color: #2f5d50;
+}
+
+/* ===== การ์ด ===== */
+section {
+  background: #fbf3e0;
+  border: 1px solid #d9c49a;
+  border-left: 8px solid #8e2f2f;
+  padding: 14px;
+  margin: 16px 0;
+  border-radius: 6px;
+  box-shadow: 0 4px 10px rgba(0,0,0,.35);
+}
+h2 {
+  font-family: 'Mitr', sans-serif;
+  font-weight: 400;
+  font-size: 1.2rem;
+  color: #6b2d1f;
+  margin-top: 0;
+  border-bottom: 2px dashed #d9c49a;
+  padding-bottom: 6px;
+}
+
+input {
+  padding: 10px;
+  margin: 4px 0;
+  width: 100%;
+  background: #fffaf0;
+  border: 1px solid #c9ae7a;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 1rem;
+}
+input:focus { outline: 2px solid #c9a24a; }
+
+button {
+  padding: 8px 14px;
+  margin: 2px;
+  background: #8e2f2f;
+  color: #fff7e0;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: .95rem;
+}
+button:hover { background: #a63a3a; }
+button.danger { background: #5c4a3d; }
+button.danger:hover { background: #7a6150; }
+
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+th { background: #e9d8ae; color: #5a3a22; }
+th, td {
+  border-bottom: 1px solid #e0cfa6;
+  padding: 8px;
+  text-align: left;
+}
+tr:hover td { background: #f5e9c8; }
+
+.ok { color: #2f6b3a; font-weight: 600; }
+.late { color: #b3261e; font-weight: 600; }
+.cover {
+  width: 50px;
+  height: 70px;
+  object-fit: cover;
+  border-radius: 3px;
+  box-shadow: 2px 2px 6px rgba(0,0,0,.4);
+  display: block;
+}
+small { color: #7a6150; }
+.tag { font-weight: 600; color: #6b2d1f; font-size: .85rem; }
+
+/* ===== หน้าต่างล็อกอิน ===== */
+.modal-bg {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(0,0,0,.6);
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.modal-bg.show { display: flex; }
+.modal {
+  background: #fbf3e0;
+  border-left: 8px solid #8e2f2f;
+  border-radius: 8px;
+  padding: 18px;
+  width: 100%;
+  max-width: 360px;
+}
+.modal .switch { text-align: center; margin: 10px 0 0; }
+.modal a { color: #8e2f2f; font-weight: 600; }

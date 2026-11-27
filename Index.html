@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ห้องสมุดของเรา</title>
+  <link href="https://fonts.googleapis.com/css2?family=Mitr:wght@400&family=Sarabun:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">📚 ห้องสมุดของเรา</div>
+    <div id="authArea"></div>
+  </header>
+
+  <nav class="catnav">
+    <div id="catTabs" class="tabs"></div>
+    <div id="subPanel"></div>
+  </nav>
+
+  <main class="wrap">
+    <section>
+      <h2>🔎 รายการหนังสือ</h2>
+      <input id="search" placeholder="ค้นหาชื่อหนังสือ/ผู้แต่ง" oninput="render()">
+      <div class="scroll">
+        <table>
+          <thead><tr><th>ปก</th><th>ชื่อ / ผู้แต่ง</th><th>หมวดหมู่</th><th>สถานะ</th><th>จัดการ</th></tr></thead>
+          <tbody id="bookTable"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>🕮 รายการที่กำลังยืม</h2>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>หนังสือ</th><th>ผู้ยืม</th><th>กำหนดคืน</th><th>สถานะ</th></tr></thead>
+          <tbody id="loanTable"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- หน้าต่างล็อกอิน / สมัครสมาชิก -->
+  <div id="authModal" class="modal-bg" onclick="if(event.target===this)closeAuth()">
+    <div class="modal">
+      <h2 id="authTitle">เข้าสู่ระบบ</h2>
+      <input id="aName" placeholder="ชื่อ-นามสกุล">
+      <input id="aUser" placeholder="ชื่อผู้ใช้ (username)" autocapitalize="none">
+      <input id="aPass" type="password" placeholder="รหัสผ่าน">
+      <button id="authSubmit" onclick="submitAuth()">ตกลง</button>
+      <button class="danger" onclick="closeAuth()">ยกเลิก</button>
+      <p class="switch">
+        <a href="#" id="authSwitch" onclick="toggleAuth();return false;"></a>
+      </p>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
