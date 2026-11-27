@@ -8,50 +8,79 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">📚 ห้องสมุดของเรา</div>
-    <div id="authArea"></div>
+  <header id="topbar" class="topbar">
+    <div class="bar">
+      <div class="brand" onclick="toggleMenu('home')">📚 ห้องสมุดของเรา</div>
+      <nav id="mainNav" class="mainnav"></nav>
+      <div id="authArea"></div>
+      <button class="close-btn" onclick="closeMega()">✕ ปิด</button>
+    </div>
+    <div id="mega" class="mega"></div>
   </header>
-
-  <nav class="catnav">
-    <div id="catTabs" class="tabs"></div>
-    <div id="subPanel"></div>
-  </nav>
+  <div id="megaBg" class="mega-bg" onclick="closeMega()"></div>
+  <div id="busy" class="busy">⏳ กำลังทำงาน...</div>
 
   <main class="wrap">
-    <section>
-      <h2>🔎 รายการหนังสือ</h2>
-      <input id="search" placeholder="ค้นหาชื่อหนังสือ/ผู้แต่ง" oninput="render()">
-      <div class="scroll">
-        <table>
-          <thead><tr><th>ปก</th><th>ชื่อ / ผู้แต่ง</th><th>หมวดหมู่</th><th>สถานะ</th><th>จัดการ</th></tr></thead>
-          <tbody id="bookTable"></tbody>
-        </table>
-      </div>
-    </section>
+    <div id="mainView">
+      <section id="bookSection">
+        <h2>🔎 รายการหนังสือ</h2>
+        <div id="filterInfo"></div>
+        <input id="search" placeholder="ค้นหาชื่อหนังสือ/ผู้แต่ง" oninput="renderMain()">
+        <div class="scroll">
+          <table>
+            <thead><tr><th>ปก</th><th>ชื่อ / ผู้แต่ง</th><th>หมวดหมู่</th><th>คงเหลือ</th><th>จัดการ</th></tr></thead>
+            <tbody id="bookTable"></tbody>
+          </table>
+        </div>
+      </section>
 
-    <section>
-      <h2>🕮 รายการที่กำลังยืม</h2>
-      <div class="scroll">
-        <table>
-          <thead><tr><th>หนังสือ</th><th>ผู้ยืม</th><th>กำหนดคืน</th><th>สถานะ</th></tr></thead>
-          <tbody id="loanTable"></tbody>
-        </table>
-      </div>
-    </section>
+      <section id="loanSection">
+        <h2>🕮 รายการยืมของฉัน</h2>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>หนังสือ</th><th>วันที่ยืม</th><th>กำหนดคืน</th><th>สถานะ</th><th>จัดการ</th></tr></thead>
+            <tbody id="loanTable"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <div id="adminView" style="display:none">
+      <section>
+        <h2>⚙️ จัดการระบบ (ผู้ดูแล)</h2>
+        <div id="stats" class="stats"></div>
+        <div id="adminTabs" class="subtabs"></div>
+        <div id="adminBody"></div>
+      </section>
+    </div>
   </main>
 
-  <!-- หน้าต่างล็อกอิน / สมัครสมาชิก -->
+  <!-- ล็อกอิน / สมัครสมาชิก -->
   <div id="authModal" class="modal-bg" onclick="if(event.target===this)closeAuth()">
     <div class="modal">
       <h2 id="authTitle">เข้าสู่ระบบ</h2>
-      <input id="aUser" placeholder="ชื่อผู้ใช้ ชื่อ-นามสกุล (username)" autocapitalize="none">
+      <input id="aName" placeholder="ชื่อ-นามสกุล">
+      <input id="aUser" placeholder="ชื่อผู้ใช้ (username)" autocapitalize="none">
       <input id="aPass" type="password" placeholder="รหัสผ่าน">
       <button id="authSubmit" onclick="submitAuth()">ตกลง</button>
       <button class="danger" onclick="closeAuth()">ยกเลิก</button>
-      <p class="switch">
-        <a href="#" id="authSwitch" onclick="toggleAuth();return false;"></a>
-      </p>
+      <p class="switch"><a href="#" id="authSwitch" onclick="toggleAuth();return false;"></a></p>
+    </div>
+  </div>
+
+  <!-- ฟอร์มหนังสือ (แอดมิน) -->
+  <div id="bookModal" class="modal-bg" onclick="if(event.target===this)closeBookForm()">
+    <div class="modal">
+      <h2 id="bookFormTitle">เพิ่มหนังสือ</h2>
+      <input type="hidden" id="bId">
+      <input id="bTitle" placeholder="ชื่อหนังสือ">
+      <input id="bAuthor" placeholder="ผู้แต่ง">
+      <select id="bCat" onchange="fillSubs(this.value)"></select>
+      <select id="bSub"></select>
+      <input id="bCover" placeholder="ลิงก์รูปปก (ไม่ใส่ก็ได้)">
+      <input id="bQty" type="number" min="0" placeholder="จำนวนเล่มทั้งหมด">
+      <button onclick="saveBookForm()">บันทึก</button>
+      <button class="danger" onclick="closeBookForm()">ยกเลิก</button>
     </div>
   </div>
 
