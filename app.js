@@ -15,38 +15,17 @@ const CATEGORIES = {
     subs: { aitool: 'เครื่องมือ AI และ Generative AI', security: 'ความปลอดภัยไซเบอร์', data: 'ข้อมูลและคลาวด์' } },
 };
 
-const MENUS = [
-  { id: 'home', name: '🏠 หน้าหลัก' },
-  { id: 'cat', name: '🗂️ หมวดหมู่' },
-  { id: 'service', name: '🧾 บริการ', items: [
-    { name: 'ยืม-คืนหนังสือ', children: [
-      { name: 'ดูหนังสือทั้งหมด', go: 'books' },
-      { name: 'รายการยืมของฉัน', go: 'loans' } ] },
-    { name: 'กติกาการยืม', children: [
-      { name: 'ระยะเวลายืม ' + LOAN_DAYS + ' วัน' },
-      { name: 'มีค่าปรับเมื่อคืนเกินกำหนด' },
-      { name: 'ต้องเข้าสู่ระบบก่อนยืม' } ] },
-  ]},
-  { id: 'about', name: 'ℹ️ เกี่ยวกับห้องสมุด', items: [
-    { name: 'เวลาทำการ', children: [
-      { name: 'จันทร์ - ศุกร์ 08:30 - 16:30 น.' },
-      { name: 'เสาร์ - อาทิตย์ ปิดทำการ' } ] },
-    { name: 'ติดต่อเรา', children: [
-      { name: 'โทร 0X-XXXX-XXXX' },
-      { name: 'อีเมล library@example.com' } ] },
-  ]},
-];
-
 // ===== สถานะ =====
 let books = [], loans = [], users = [];
 let me = null;
 let finePerDay = 5;
 let session = loadJSON('session', null);
-let view = 'main';       // main | admin
-let adminTab = 'loans';  // loans | books | users
+let view = 'main';          // main | profile | admin
+let adminTab = 'loans';     // loans | books | users
+let showReturned = false;
 let selCat = 'all', selSub = 'all';
 let authMode = 'login';
-let openMenu = null, activeItem = 0;
+let menuOpen = false, activeItem = 0;
 
 const PLACEHOLDER = 'data:image/svg+xml;utf8,' + encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" width="50" height="70">' +
@@ -68,14 +47,19 @@ function hash(s) {
   for (const ch of s) h = ((h << 5) + h + ch.charCodeAt(0)) | 0;
   return String(h);
 }
-function fmt(d) { return d ? new Date(d).toLocaleDateString('th-TH') : '-'; }
 function $(id) { return document.getElementById(id); }
+function fmt(d) { return d ? new Date(d).toLocaleDateString('th-TH') : '-'; }
 function bookOf(id) { return books.find(b => String(b.id) === String(id)); }
 function isOpen(l) { return !l.returnDate; }
 function isLate(l) { return isOpen(l) && new Date() > new Date(l.due); }
 function isAdmin() { return me && me.role === 'admin'; }
-
+function initial(name) { return (String(name).match(/[ก-ฮA-Za-z0-9]/) || ['👤'])[0].toUpperCase(); }
+function scrollToId(id) { const el = $(id); if (el) el.scrollIntoView({ behavior: 'smooth' }); }
 function setBusy(on) { $('busy').classList.toggle('show', on); }
+function daysLate(l) {
+  const end = l.returnDate ? new Date(l.returnDate) : new Date();
+  return Math.max(0, Math.floor((end - new Date(l.due)) / 86400000));
+}
 
 async function api(action, data) {
   const body = Object.assign({ action }, session || {}, data || {});
@@ -85,7 +69,6 @@ async function api(action, data) {
   return j;
 }
 
-// ทำคำสั่ง -> โหลดข้อมูลใหม่ -> แสดงผล
 async function act(fn, onOk) {
   setBusy(true);
   try {
@@ -108,6 +91,7 @@ async function refresh() {
   finePerDay = r.finePerDay || 5;
   if (session && !me) { session = null; localStorage.removeItem('session'); }
   if (view === 'admin' && !isAdmin()) view = 'main';
+  if (view === 'profile' && !me) view = 'main';
   renderAll();
 }
 
@@ -159,7 +143,9 @@ async function submitAuth() {
 function logout() {
   session = null; me = null; view = 'main';
   localStorage.removeItem('session');
-  refresh();
+  renderAll();
+  refresh().catch(() => {});
+  window.scrollTo({ top: 0 });
 }
 
 // ===== ยืม-คืน =====
@@ -175,87 +161,125 @@ function returnBook(loanId) {
   });
 }
 
-// ===== Mega Menu =====
-function menuItems(m) {
-  if (m.id === 'cat') {
-    return Object.keys(CATEGORIES).map((k, i) => {
-      const c = CATEGORIES[k];
-      const kids = [{ name: 'ทุกหัวข้อ', cat: k, sub: 'all' }];
-      Object.keys(c.subs).forEach((s, j) => {
-        kids.push({ name: (i + 1) + '.' + (j + 1) + ' ' + c.subs[s], cat: k, sub: s });
-      });
-      return { name: (i + 1) + '. ' + c.icon + ' ' + c.name, children: kids };
-    });
-  }
-  return m.items || [];
-}
-function scrollToId(id) {
-  const el = $(id);
-  if (el) el.scrollIntoView({ behavior: 'smooth' });
-}
-function showMain() { view = 'main'; renderAll(); }
+// ===== เมนู (แท็บซ้าย) =====
+function buildMenu() {
+  const items = [{ name: '🏠 หน้าหลัก', go: 'home' }];
 
-function toggleMenu(id) {
-  if (id === 'home') {
-    selCat = 'all'; selSub = 'all'; $('search').value = ''; openMenu = null;
-    showMain();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    return;
+  items.push({ label: 'หมวดหมู่หนังสือ' });
+  Object.keys(CATEGORIES).forEach((k, i) => {
+    const c = CATEGORIES[k];
+    const kids = [{ name: 'ทุกหัวข้อ', cat: k, sub: 'all' }];
+    Object.keys(c.subs).forEach((s, j) => {
+      kids.push({ name: (i + 1) + '.' + (j + 1) + ' ' + c.subs[s], cat: k, sub: s });
+    });
+    items.push({ name: (i + 1) + '. ' + c.icon + ' ' + c.name, children: kids, cat: k });
+  });
+
+  items.push({ label: 'บริการ' });
+  items.push({ name: '🧾 ยืม-คืนหนังสือ', children: [
+    { name: 'ดูหนังสือทั้งหมด', go: 'books' },
+    { name: 'รายการยืมของฉัน (โปรไฟล์)', go: 'profile' } ] });
+  items.push({ name: '📋 กติกาการยืม', children: [
+    { name: 'ระยะเวลายืม ' + LOAN_DAYS + ' วัน' },
+    { name: 'มีค่าปรับเมื่อคืนเกินกำหนด' },
+    { name: 'ต้องเข้าสู่ระบบก่อนยืม' } ] });
+
+  items.push({ label: 'เกี่ยวกับห้องสมุด' });
+  items.push({ name: '🕘 เวลาทำการ', children: [
+    { name: 'จันทร์ - ศุกร์ 08:30 - 16:30 น.' },
+    { name: 'เสาร์ - อาทิตย์ ปิดทำการ' } ] });
+  items.push({ name: '📞 ติดต่อเรา', children: [
+    { name: 'โทร 0X-XXXX-XXXX' },
+    { name: 'อีเมล library@example.com' } ] });
+
+  if (isAdmin()) {
+    items.push({ label: 'ผู้ดูแลระบบ' });
+    items.push({ name: '⚙️ จัดการระบบ', go: 'admin' });
   }
-  if (openMenu === id) return closeMega();
-  openMenu = id;
-  activeItem = 0;
-  if (id === 'cat' && selCat !== 'all') activeItem = Object.keys(CATEGORIES).indexOf(selCat);
-  renderNav(); renderMega();
+  return items;
 }
-function closeMega() { openMenu = null; renderNav(); renderMega(); }
+
+function toggleMenu() {
+  if (menuOpen) return closeMega();
+  menuOpen = true;
+  const items = buildMenu();
+  let idx = items.findIndex(it => it.children);
+  if (selCat !== 'all') {
+    const f = items.findIndex(it => it.cat === selCat);
+    if (f >= 0) idx = f;
+  }
+  activeItem = idx;
+  renderMenuBtn(); renderMega();
+}
+function closeMega() { menuOpen = false; renderMenuBtn(); renderMega(); }
 function setItem(i) { if (i !== activeItem) { activeItem = i; renderMega(); } }
 
 function pickChild(j) {
-  const m = MENUS.find(x => x.id === openMenu);
-  const c = menuItems(m)[activeItem].children[j];
+  const c = buildMenu()[activeItem].children[j];
   closeMega();
   if (c.cat !== undefined) {
-    selCat = c.cat; selSub = c.sub; showMain(); scrollToId('bookSection');
-  } else if (c.go === 'books') {
-    selCat = 'all'; selSub = 'all'; showMain(); scrollToId('bookSection');
-  } else if (c.go === 'loans') {
-    showMain(); scrollToId('loanSection');
+    selCat = c.cat; selSub = c.sub; $('search').value = '';
+    setView('main'); scrollToId('bookSection');
+  } else if (c.go) {
+    gotoView(c.go);
   }
 }
+function menuGo(g) { closeMega(); gotoView(g); }
+
+function gotoView(g) {
+  if (g === 'home') goHome();
+  else if (g === 'books') { selCat = 'all'; selSub = 'all'; setView('main'); scrollToId('bookSection'); }
+  else if (g === 'profile') goProfile();
+  else if (g === 'admin') goAdmin();
+}
+function goHome() {
+  closeMega();
+  selCat = 'all'; selSub = 'all'; $('search').value = '';
+  setView('main');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function goProfile() {
+  if (!me) { alert('กรุณาเข้าสู่ระบบก่อน'); return openAuth('login'); }
+  closeMega(); setView('profile'); window.scrollTo({ top: 0 });
+}
+function goAdmin() {
+  if (!isAdmin()) return;
+  closeMega(); setView('admin'); window.scrollTo({ top: 0 });
+}
+function setView(v) { view = v; renderAll(); }
+
 function openBook(id) {
   const b = bookOf(id);
   closeMega();
   selCat = 'all'; selSub = 'all';
   $('search').value = b ? b.title : '';
-  showMain(); scrollToId('bookSection');
+  setView('main'); scrollToId('bookSection');
 }
 function clearFilter() { selCat = 'all'; selSub = 'all'; renderMain(); }
-function goAdmin() { closeMega(); view = 'admin'; renderAll(); window.scrollTo({ top: 0 }); }
 
-function renderNav() {
-  let h = MENUS.map(m =>
-    `<button class="nav-btn ${openMenu === m.id ? 'open' : ''}" onclick="toggleMenu('${m.id}')">${m.name}</button>`
-  ).join('');
-  if (isAdmin()) {
-    h += `<button class="nav-btn ${view === 'admin' ? 'open' : ''}" onclick="goAdmin()">⚙️ จัดการระบบ</button>`;
-  }
-  $('mainNav').innerHTML = h;
-  $('topbar').classList.toggle('open', !!openMenu);
+function renderMenuBtn() {
+  const b = $('menuBtn');
+  b.textContent = menuOpen ? '✕ ปิด' : '☰ เมนู';
+  b.classList.toggle('open', menuOpen);
+  $('topbar').classList.toggle('open', menuOpen);
 }
 
 function renderMega() {
   const box = $('mega'), bg = $('megaBg');
-  if (!openMenu) { box.classList.remove('show'); bg.classList.remove('show'); return; }
-  const m = MENUS.find(x => x.id === openMenu);
-  const items = menuItems(m);
-  const cur = items[activeItem] || items[0];
+  if (!menuOpen) { box.classList.remove('show'); bg.classList.remove('show'); return; }
+  const items = buildMenu();
+  const cur = items[activeItem];
 
-  const left = items.map((it, i) =>
-    `<button class="m-item ${i === activeItem ? 'active' : ''}" onclick="setItem(${i})" onmouseenter="setItem(${i})">
-       <span>${esc(it.name)}</span><span>›</span></button>`).join('');
+  const left = items.map((it, i) => {
+    if (it.label) return `<div class="m-label">${esc(it.label)}</div>`;
+    if (it.children) {
+      return `<button class="m-item ${i === activeItem ? 'active' : ''}" onclick="setItem(${i})" onmouseenter="setItem(${i})">
+        <span>${esc(it.name)}</span><span>›</span></button>`;
+    }
+    return `<button class="m-item" onclick="menuGo('${it.go}')"><span>${esc(it.name)}</span></button>`;
+  }).join('');
 
-  const mid = cur.children.map((c, j) => {
+  const mid = ((cur && cur.children) || []).map((c, j) => {
     if (c.cat === undefined && !c.go) return `<div class="m-text">${esc(c.name)}</div>`;
     const on = c.cat !== undefined && c.cat === selCat && c.sub === selSub;
     return `<button class="m-child ${on ? 'active' : ''}" onclick="pickChild(${j})">${esc(c.name)}</button>`;
@@ -278,8 +302,9 @@ function renderMega() {
 // ===== แสดงผล =====
 function renderAuth() {
   $('authArea').innerHTML = me
-    ? `<span class="hello">👤 ${esc(me.name)}${isAdmin() ? '<span class="badge-admin">แอดมิน</span>' : ''}</span>
-       <button class="outline" onclick="logout()">ออกจากระบบ</button>`
+    ? `<button class="profile-btn" onclick="goProfile()">
+         <span class="avatar-sm">${esc(initial(me.name))}</span>
+         <span class="pname">${esc(me.name)}</span></button>`
     : `<button class="outline" onclick="openAuth('login')">เข้าสู่ระบบ</button>
        <button onclick="openAuth('register')">สมัครสมาชิก</button>`;
 }
@@ -293,13 +318,17 @@ function catLabel(b) {
 
 function renderAll() {
   renderAuth();
-  renderNav();
+  renderMenuBtn();
   renderMega();
   $('mainView').style.display = view === 'main' ? 'block' : 'none';
+  $('profileView').style.display = view === 'profile' ? 'block' : 'none';
   $('adminView').style.display = view === 'admin' ? 'block' : 'none';
-  if (view === 'admin') renderAdmin(); else renderMain();
+  if (view === 'admin') renderAdmin();
+  else if (view === 'profile') renderProfile();
+  else renderMain();
 }
 
+// ----- หน้าหลัก: รายการหนังสือ -----
 function renderMain() {
   let info = '';
   if (selCat !== 'all') {
@@ -331,26 +360,57 @@ function renderMain() {
         <td>${btn}</td></tr>`;
     }).join('');
   $('bookTable').innerHTML = rows || '<tr><td colspan="5" class="empty">ไม่มีหนังสือในหมวดนี้</td></tr>';
-
-  let lrows;
-  if (!me) {
-    lrows = '<tr><td colspan="5" class="empty">เข้าสู่ระบบเพื่อดูรายการยืมของคุณ</td></tr>';
-  } else {
-    lrows = myOpen.map(l => {
-      const b = bookOf(l.bookId);
-      return `<tr>
-        <td>${b ? esc(b.title) : '-'}</td>
-        <td>${fmt(l.borrowDate)}</td><td>${fmt(l.due)}</td>
-        <td class="${isLate(l) ? 'late' : 'ok'}">${isLate(l) ? 'เกินกำหนด' : 'ปกติ'}</td>
-        <td><button class="green small" onclick="returnBook('${esc(l.id)}')">คืน</button></td></tr>`;
-    }).join('') || '<tr><td colspan="5" class="empty">คุณไม่มีหนังสือที่ยืมอยู่</td></tr>';
-  }
-  $('loanTable').innerHTML = lrows;
 }
 
-// ===== หน้าแอดมิน =====
+// ----- หน้าโปรไฟล์ -----
+function renderProfile() {
+  if (!me) return;
+  const mine = loans.filter(l => l.username === me.username);
+  const open = mine.filter(isOpen);
+  const done = mine.filter(l => !isOpen(l))
+    .sort((a, b) => new Date(b.returnDate) - new Date(a.returnDate));
+  const owed = open.reduce((s, l) => s + daysLate(l) * finePerDay, 0);
+
+  $('profileInfo').innerHTML =
+    `<div class="profile-head">
+       <div class="avatar">${esc(initial(me.name))}</div>
+       <div><strong style="font-size:1.2rem">${esc(me.name)}</strong>
+         ${isAdmin() ? '<span class="badge-admin">แอดมิน</span>' : ''}<br>
+         <small>@${esc(me.username)} · ${isAdmin() ? 'ผู้ดูแลระบบ' : 'สมาชิก'}</small></div>
+       <div class="profile-actions">
+         ${isAdmin() ? '<button class="green small" onclick="goAdmin()">⚙️ จัดการระบบ</button>' : ''}
+         <button class="danger small" onclick="logout()">ออกจากระบบ</button>
+       </div>
+     </div>
+     <div class="stats">
+       <div class="stat"><b>${open.length}</b><span>กำลังยืม</span></div>
+       <div class="stat ${open.filter(isLate).length ? 'warn' : ''}"><b>${open.filter(isLate).length}</b><span>เกินกำหนด</span></div>
+       <div class="stat"><b>${done.length}</b><span>คืนแล้ว</span></div>
+       <div class="stat ${owed ? 'warn' : ''}"><b>${owed}</b><span>ค่าปรับที่ค้าง (บาท)</span></div>
+     </div>`;
+
+  $('profileLoans').innerHTML = open.map(l => {
+    const b = bookOf(l.bookId);
+    const left = Math.ceil((new Date(l.due) - new Date()) / 86400000);
+    const st = isLate(l)
+      ? `<span class="late">เกินกำหนด ${daysLate(l)} วัน</span>`
+      : `<span class="ok">เหลืออีก ${left} วัน</span>`;
+    return `<tr><td>${b ? esc(b.title) : '-'}</td>
+      <td>${fmt(l.borrowDate)}</td><td>${fmt(l.due)}</td><td>${st}</td>
+      <td><button class="green small" onclick="returnBook('${esc(l.id)}')">คืน</button></td></tr>`;
+  }).join('') || '<tr><td colspan="5" class="empty">คุณไม่มีหนังสือที่ยืมอยู่</td></tr>';
+
+  $('profileHistory').innerHTML = done.map(l => {
+    const b = bookOf(l.bookId);
+    const f = daysLate(l) * finePerDay;
+    return `<tr><td>${b ? esc(b.title) : '-'}</td>
+      <td>${fmt(l.borrowDate)}</td><td>${fmt(l.returnDate)}</td>
+      <td class="${f ? 'late' : 'ok'}">${f ? f + ' บาท' : 'ไม่มี'}</td></tr>`;
+  }).join('') || '<tr><td colspan="4" class="empty">ยังไม่มีประวัติการยืม</td></tr>';
+}
+
+// ----- หน้าแอดมิน -----
 function setAdminTab(t) { adminTab = t; renderAdmin(); }
-let showReturned = false;
 function toggleReturned() { showReturned = !showReturned; renderAdmin(); }
 
 function renderAdmin() {
@@ -458,4 +518,6 @@ document.addEventListener('keydown', e => {
 // ===== เริ่มทำงาน =====
 renderAll();
 setBusy(true);
-refresh().catch(e => alert('โหลดข้อมูลไม่สำเร็จ: ' + e.message)).finally(() => setBusy(false));
+refresh()
+  .catch(e => alert('โหลดข้อมูลไม่สำเร็จ: ' + e.message))
+  .finally(() => setBusy(false));
