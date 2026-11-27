@@ -10,10 +10,11 @@
 <body>
   <header id="topbar" class="topbar">
     <div class="bar">
-      <div class="brand" onclick="toggleMenu('home')">📚 ห้องสมุดของเรา</div>
-      <nav id="mainNav" class="mainnav"></nav>
-      <div id="authArea"></div>
-      <button class="close-btn" onclick="closeMega()">✕ ปิด</button>
+      <div class="bar-left">
+        <button id="menuBtn" class="menu-btn" onclick="toggleMenu()">☰ เมนู</button>
+      </div>
+      <div class="brand" onclick="goHome()">📚 ห้องสมุดของเรา</div>
+      <div id="authArea" class="bar-right"></div>
     </div>
     <div id="mega" class="mega"></div>
   </header>
@@ -21,6 +22,7 @@
   <div id="busy" class="busy">⏳ กำลังทำงาน...</div>
 
   <main class="wrap">
+    <!-- หน้าหลัก -->
     <div id="mainView">
       <section id="bookSection">
         <h2>🔎 รายการหนังสือ</h2>
@@ -33,18 +35,35 @@
           </table>
         </div>
       </section>
+    </div>
 
-      <section id="loanSection">
-        <h2>🕮 รายการยืมของฉัน</h2>
+    <!-- โปรไฟล์ -->
+    <div id="profileView" style="display:none">
+      <section>
+        <h2>👤 โปรไฟล์ของฉัน</h2>
+        <div id="profileInfo"></div>
+      </section>
+      <section>
+        <h2>🕮 รายการที่กำลังยืม</h2>
         <div class="scroll">
           <table>
             <thead><tr><th>หนังสือ</th><th>วันที่ยืม</th><th>กำหนดคืน</th><th>สถานะ</th><th>จัดการ</th></tr></thead>
-            <tbody id="loanTable"></tbody>
+            <tbody id="profileLoans"></tbody>
+          </table>
+        </div>
+      </section>
+      <section>
+        <h2>🕘 ประวัติการยืม</h2>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>หนังสือ</th><th>วันที่ยืม</th><th>วันที่คืน</th><th>ค่าปรับ</th></tr></thead>
+            <tbody id="profileHistory"></tbody>
           </table>
         </div>
       </section>
     </div>
 
+    <!-- แอดมิน -->
     <div id="adminView" style="display:none">
       <section>
         <h2>⚙️ จัดการระบบ (ผู้ดูแล)</h2>
