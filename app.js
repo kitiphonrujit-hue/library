@@ -1,7 +1,7 @@
-const LOAN_DAYS = 7;
-const FINE_PER_DAY = 5;
+// ===== ตั้งค่า =====
+const API_URL = 'https://script.google.com/macros/s/AKfycbzbAA08Nc0ncrjWScDmjkjQgPJdYZt7lUzzCJklKPm5tNc7RcsE1XinTvDONCDLN_TP/exec';
+const LOAN_DAYS = 7; // ใช้แสดงข้อความเท่านั้น (ค่าจริงตั้งใน Apps Script)
 
-// ===== หมวดหมู่ =====
 const CATEGORIES = {
   ecom: { name: 'ธุรกิจอิเล็กทรอนิกส์ (E-Commerce)', icon: '🛒',
     subs: { platform: 'แพลตฟอร์มร้านค้าออนไลน์', payment: 'ระบบชำระเงินออนไลน์', logistics: 'โลจิสติกส์และการขนส่ง' } },
@@ -15,32 +15,38 @@ const CATEGORIES = {
     subs: { aitool: 'เครื่องมือ AI และ Generative AI', security: 'ความปลอดภัยไซเบอร์', data: 'ข้อมูลและคลาวด์' } },
 };
 
-// ===== เพิ่มหนังสือตรงนี้ =====
-const BOOKS = [
-  { id: 1, title: 'คู่มือเปิดร้านค้าออนไลน์', author: 'ตัวอย่าง ผู้แต่ง',
-    cat: 'ecom', sub: 'platform' },
-  { id: 2, title: 'การตลาดบน Facebook และ TikTok', author: 'ตัวอย่าง ผู้แต่ง',
-    cat: 'mkt', sub: 'social' },
-  { id: 3, title: 'ออกแบบโลโก้ด้วย Illustrator', author: 'ตัวอย่าง ผู้แต่ง',
-    cat: 'graphic', sub: 'design' },
-  { id: 4, title: 'Excel สำหรับงานสำนักงาน', author: 'ตัวอย่าง ผู้แต่ง',
-    cat: 'office', sub: 'excel' },
-  { id: 5, title: 'ใช้ AI ทำงานอย่างมืออาชีพ', author: 'ตัวอย่าง ผู้แต่ง',
-    cat: 'ai', sub: 'aitool' },
+const MENUS = [
+  { id: 'home', name: '🏠 หน้าหลัก' },
+  { id: 'cat', name: '🗂️ หมวดหมู่' },
+  { id: 'service', name: '🧾 บริการ', items: [
+    { name: 'ยืม-คืนหนังสือ', children: [
+      { name: 'ดูหนังสือทั้งหมด', go: 'books' },
+      { name: 'รายการยืมของฉัน', go: 'loans' } ] },
+    { name: 'กติกาการยืม', children: [
+      { name: 'ระยะเวลายืม ' + LOAN_DAYS + ' วัน' },
+      { name: 'มีค่าปรับเมื่อคืนเกินกำหนด' },
+      { name: 'ต้องเข้าสู่ระบบก่อนยืม' } ] },
+  ]},
+  { id: 'about', name: 'ℹ️ เกี่ยวกับห้องสมุด', items: [
+    { name: 'เวลาทำการ', children: [
+      { name: 'จันทร์ - ศุกร์ 08:30 - 16:30 น.' },
+      { name: 'เสาร์ - อาทิตย์ ปิดทำการ' } ] },
+    { name: 'ติดต่อเรา', children: [
+      { name: 'โทร 0X-XXXX-XXXX' },
+      { name: 'อีเมล library@example.com' } ] },
+  ]},
 ];
-// ==============================
 
-function load(key, def) {
-  try { return JSON.parse(localStorage.getItem(key)) || def; }
-  catch (e) { return def; }
-}
-
-let loans = load('loans', []);
-let users = load('users', []);
-let currentUser = localStorage.getItem('currentUser'); // username ที่ล็อกอินอยู่
-let selCat = 'all';
-let selSub = 'all';
+// ===== สถานะ =====
+let books = [], loans = [], users = [];
+let me = null;
+let finePerDay = 5;
+let session = loadJSON('session', null);
+let view = 'main';       // main | admin
+let adminTab = 'loans';  // loans | books | users
+let selCat = 'all', selSub = 'all';
 let authMode = 'login';
+let openMenu = null, activeItem = 0;
 
 const PLACEHOLDER = 'data:image/svg+xml;utf8,' + encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" width="50" height="70">' +
@@ -48,159 +54,234 @@ const PLACEHOLDER = 'data:image/svg+xml;utf8,' + encodeURIComponent(
   '<rect x="4" y="4" width="42" height="62" fill="none" stroke="#c9a24a" stroke-width="2"/>' +
   '<text x="25" y="42" font-size="24" text-anchor="middle">📖</text></svg>');
 
-function save() {
-  localStorage.setItem('loans', JSON.stringify(loans));
-  localStorage.setItem('users', JSON.stringify(users));
+// ===== เครื่องมือ =====
+function loadJSON(k, def) {
+  try { return JSON.parse(localStorage.getItem(k)) || def; } catch (e) { return def; }
 }
-
 function esc(s) {
-  const d = document.createElement('div');
-  d.textContent = s || '';
-  return d.innerHTML;
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
-
-// ===== ระบบสมาชิก =====
-// หมายเหตุ: เป็นระบบจำลองเก็บในเบราว์เซอร์ ยังไม่ปลอดภัยจริง
 function hash(s) {
   let h = 5381;
   for (const ch of s) h = ((h << 5) + h + ch.charCodeAt(0)) | 0;
   return String(h);
 }
+function fmt(d) { return d ? new Date(d).toLocaleDateString('th-TH') : '-'; }
+function $(id) { return document.getElementById(id); }
+function bookOf(id) { return books.find(b => String(b.id) === String(id)); }
+function isOpen(l) { return !l.returnDate; }
+function isLate(l) { return isOpen(l) && new Date() > new Date(l.due); }
+function isAdmin() { return me && me.role === 'admin'; }
 
-function getUser() {
-  return users.find(u => u.username === currentUser) || null;
+function setBusy(on) { $('busy').classList.toggle('show', on); }
+
+async function api(action, data) {
+  const body = Object.assign({ action }, session || {}, data || {});
+  const r = await fetch(API_URL, { method: 'POST', body: JSON.stringify(body) });
+  const j = await r.json();
+  if (j.error) throw new Error(j.error);
+  return j;
 }
 
+// ทำคำสั่ง -> โหลดข้อมูลใหม่ -> แสดงผล
+async function act(fn, onOk) {
+  setBusy(true);
+  try {
+    const r = await fn();
+    if (onOk) onOk(r);
+    await refresh();
+  } catch (e) {
+    alert(e.message === 'Failed to fetch' ? 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ลองใหม่อีกครั้ง' : e.message);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function refresh() {
+  const r = await api('list');
+  books = r.books || [];
+  loans = r.loans || [];
+  users = r.users || [];
+  me = r.user || null;
+  finePerDay = r.finePerDay || 5;
+  if (session && !me) { session = null; localStorage.removeItem('session'); }
+  if (view === 'admin' && !isAdmin()) view = 'main';
+  renderAll();
+}
+
+// ===== ล็อกอิน =====
 function openAuth(mode) {
+  closeMega();
   authMode = mode;
-  document.getElementById('aName').value = '';
-  document.getElementById('aUser').value = '';
-  document.getElementById('aPass').value = '';
+  ['aName', 'aUser', 'aPass'].forEach(i => $(i).value = '');
   updateAuthModal();
-  document.getElementById('authModal').classList.add('show');
+  $('authModal').classList.add('show');
 }
-
-function closeAuth() {
-  document.getElementById('authModal').classList.remove('show');
-}
-
-function toggleAuth() {
-  authMode = authMode === 'login' ? 'register' : 'login';
-  updateAuthModal();
-}
-
+function closeAuth() { $('authModal').classList.remove('show'); }
+function toggleAuth() { authMode = authMode === 'login' ? 'register' : 'login'; updateAuthModal(); }
 function updateAuthModal() {
   const reg = authMode === 'register';
-  document.getElementById('authTitle').textContent = reg ? 'สมัครสมาชิก' : 'เข้าสู่ระบบ';
-  document.getElementById('aName').style.display = reg ? 'block' : 'none';
-  document.getElementById('authSubmit').textContent = reg ? 'สมัครสมาชิก' : 'เข้าสู่ระบบ';
-  document.getElementById('authSwitch').textContent =
-    reg ? 'มีบัญชีแล้ว? เข้าสู่ระบบ' : 'ยังไม่มีบัญชี? สมัครสมาชิก';
+  $('authTitle').textContent = reg ? 'สมัครสมาชิก' : 'เข้าสู่ระบบ';
+  $('aName').style.display = reg ? 'block' : 'none';
+  $('authSubmit').textContent = reg ? 'สมัครสมาชิก' : 'เข้าสู่ระบบ';
+  $('authSwitch').textContent = reg ? 'มีบัญชีแล้ว? เข้าสู่ระบบ' : 'ยังไม่มีบัญชี? สมัครสมาชิก';
 }
 
-function submitAuth() {
-  const name = document.getElementById('aName').value.trim();
-  const username = document.getElementById('aUser').value.trim().toLowerCase();
-  const pass = document.getElementById('aPass').value;
-
-  if (authMode === 'register') {
+async function submitAuth() {
+  const name = $('aName').value.trim();
+  const username = $('aUser').value.trim().toLowerCase();
+  const pass = $('aPass').value;
+  const reg = authMode === 'register';
+  if (reg) {
     if (!name) return alert('กรุณาใส่ชื่อ-นามสกุล');
     if (username.length < 3) return alert('ชื่อผู้ใช้ต้องมีอย่างน้อย 3 ตัวอักษร');
     if (pass.length < 4) return alert('รหัสผ่านต้องมีอย่างน้อย 4 ตัวอักษร');
-    if (users.some(u => u.username === username)) return alert('ชื่อผู้ใช้นี้ถูกใช้แล้ว');
-    users.push({ username, name, pass: hash(pass) });
-  } else {
-    const u = users.find(u => u.username === username && u.pass === hash(pass));
-    if (!u) return alert('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
+  } else if (!username || !pass) {
+    return alert('กรุณากรอกชื่อผู้ใช้และรหัสผ่าน');
   }
-
-  currentUser = username;
-  localStorage.setItem('currentUser', currentUser);
-  save();
-  closeAuth();
-  render();
+  const passHash = hash(pass);
+  setBusy(true);
+  try {
+    const r = await api(reg ? 'register' : 'login', { name, username, passHash });
+    session = { username: r.user.username, passHash };
+    localStorage.setItem('session', JSON.stringify(session));
+    closeAuth();
+    await refresh();
+  } catch (e) {
+    alert(e.message);
+  } finally {
+    setBusy(false);
+  }
 }
 
 function logout() {
-  currentUser = null;
-  localStorage.removeItem('currentUser');
-  render();
-}
-
-function renderAuth() {
-  const u = getUser();
-  document.getElementById('authArea').innerHTML = u
-    ? `<span class="hello">👤 ${esc(u.name)}</span>
-       <button class="outline" onclick="logout()">ออกจากระบบ</button>`
-    : `<button class="outline" onclick="openAuth('login')">เข้าสู่ระบบ</button>
-       <button onclick="openAuth('register')">สมัครสมาชิก</button>`;
+  session = null; me = null; view = 'main';
+  localStorage.removeItem('session');
+  refresh();
 }
 
 // ===== ยืม-คืน =====
-function loanOf(id) {
-  return loans.find(l => l.bookId === id && !l.returned);
-}
-
 function borrowBook(id) {
-  const u = getUser();
-  if (!u) { alert('กรุณาเข้าสู่ระบบก่อนยืมหนังสือ'); return openAuth('login'); }
-  if (loanOf(id)) return alert('หนังสือไม่ว่าง');
-  const due = new Date();
-  due.setDate(due.getDate() + LOAN_DAYS);
-  loans.push({ bookId: id, username: u.username, member: u.name,
-               due: due.toISOString(), returned: false });
-  save();
-  render();
+  if (!me) { alert('กรุณาเข้าสู่ระบบก่อนยืมหนังสือ'); return openAuth('login'); }
+  act(() => api('borrow', { bookId: id }),
+      () => alert('ยืมสำเร็จ กำหนดคืนภายใน ' + LOAN_DAYS + ' วัน'));
+}
+function returnBook(loanId) {
+  act(() => api('return', { loanId }), r => {
+    if (r.lateDays > 0) alert('คืนเกินกำหนด ' + r.lateDays + ' วัน ค่าปรับ ' + r.fine + ' บาท');
+    else alert('คืนสำเร็จ');
+  });
 }
 
-function returnBook(id) {
-  const u = getUser();
-  const loan = loanOf(id);
-  if (!loan) return;
-  if (!u || loan.username !== u.username) return alert('คืนได้เฉพาะหนังสือที่คุณยืมเท่านั้น');
-  loan.returned = true;
-  const lateDays = Math.floor((new Date() - new Date(loan.due)) / 86400000);
-  if (lateDays > 0) alert('คืนเกินกำหนด ' + lateDays + ' วัน ค่าปรับ ' + lateDays * FINE_PER_DAY + ' บาท');
-  else alert('คืนสำเร็จ');
-  save();
-  render();
-}
-
-// ===== หมวดหมู่ =====
-function setCat(c) {
-  selCat = (selCat === c) ? 'all' : c;
-  selSub = 'all';
-  render();
-}
-
-function setSub(s) {
-  selSub = s;
-  render();
-}
-
-function renderCategories() {
-  let tabs = `<button class="tab ${selCat === 'all' ? 'active' : ''}" onclick="setCat('all')">📚 ทั้งหมด</button>`;
-  let i = 0;
-  for (const key in CATEGORIES) {
-    i++;
-    const c = CATEGORIES[key];
-    tabs += `<button class="tab ${selCat === key ? 'active' : ''}" onclick="setCat('${key}')">${i}. ${c.icon} ${c.name}</button>`;
+// ===== Mega Menu =====
+function menuItems(m) {
+  if (m.id === 'cat') {
+    return Object.keys(CATEGORIES).map((k, i) => {
+      const c = CATEGORIES[k];
+      const kids = [{ name: 'ทุกหัวข้อ', cat: k, sub: 'all' }];
+      Object.keys(c.subs).forEach((s, j) => {
+        kids.push({ name: (i + 1) + '.' + (j + 1) + ' ' + c.subs[s], cat: k, sub: s });
+      });
+      return { name: (i + 1) + '. ' + c.icon + ' ' + c.name, children: kids };
+    });
   }
-  document.getElementById('catTabs').innerHTML = tabs;
+  return m.items || [];
+}
+function scrollToId(id) {
+  const el = $(id);
+  if (el) el.scrollIntoView({ behavior: 'smooth' });
+}
+function showMain() { view = 'main'; renderAll(); }
 
-  let sub = '';
-  if (selCat !== 'all') {
-    const idx = Object.keys(CATEGORIES).indexOf(selCat) + 1;
-    sub = '<div class="sub-list">';
-    sub += `<button class="sub-item ${selSub === 'all' ? 'active' : ''}" onclick="setSub('all')">ทุกหัวข้อ</button>`;
-    let j = 0;
-    for (const k in CATEGORIES[selCat].subs) {
-      j++;
-      sub += `<button class="sub-item ${selSub === k ? 'active' : ''}" onclick="setSub('${k}')">${idx}.${j} ${CATEGORIES[selCat].subs[k]}</button>`;
-    }
-    sub += '</div>';
+function toggleMenu(id) {
+  if (id === 'home') {
+    selCat = 'all'; selSub = 'all'; $('search').value = ''; openMenu = null;
+    showMain();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    return;
   }
-  document.getElementById('subPanel').innerHTML = sub;
+  if (openMenu === id) return closeMega();
+  openMenu = id;
+  activeItem = 0;
+  if (id === 'cat' && selCat !== 'all') activeItem = Object.keys(CATEGORIES).indexOf(selCat);
+  renderNav(); renderMega();
+}
+function closeMega() { openMenu = null; renderNav(); renderMega(); }
+function setItem(i) { if (i !== activeItem) { activeItem = i; renderMega(); } }
+
+function pickChild(j) {
+  const m = MENUS.find(x => x.id === openMenu);
+  const c = menuItems(m)[activeItem].children[j];
+  closeMega();
+  if (c.cat !== undefined) {
+    selCat = c.cat; selSub = c.sub; showMain(); scrollToId('bookSection');
+  } else if (c.go === 'books') {
+    selCat = 'all'; selSub = 'all'; showMain(); scrollToId('bookSection');
+  } else if (c.go === 'loans') {
+    showMain(); scrollToId('loanSection');
+  }
+}
+function openBook(id) {
+  const b = bookOf(id);
+  closeMega();
+  selCat = 'all'; selSub = 'all';
+  $('search').value = b ? b.title : '';
+  showMain(); scrollToId('bookSection');
+}
+function clearFilter() { selCat = 'all'; selSub = 'all'; renderMain(); }
+function goAdmin() { closeMega(); view = 'admin'; renderAll(); window.scrollTo({ top: 0 }); }
+
+function renderNav() {
+  let h = MENUS.map(m =>
+    `<button class="nav-btn ${openMenu === m.id ? 'open' : ''}" onclick="toggleMenu('${m.id}')">${m.name}</button>`
+  ).join('');
+  if (isAdmin()) {
+    h += `<button class="nav-btn ${view === 'admin' ? 'open' : ''}" onclick="goAdmin()">⚙️ จัดการระบบ</button>`;
+  }
+  $('mainNav').innerHTML = h;
+  $('topbar').classList.toggle('open', !!openMenu);
+}
+
+function renderMega() {
+  const box = $('mega'), bg = $('megaBg');
+  if (!openMenu) { box.classList.remove('show'); bg.classList.remove('show'); return; }
+  const m = MENUS.find(x => x.id === openMenu);
+  const items = menuItems(m);
+  const cur = items[activeItem] || items[0];
+
+  const left = items.map((it, i) =>
+    `<button class="m-item ${i === activeItem ? 'active' : ''}" onclick="setItem(${i})" onmouseenter="setItem(${i})">
+       <span>${esc(it.name)}</span><span>›</span></button>`).join('');
+
+  const mid = cur.children.map((c, j) => {
+    if (c.cat === undefined && !c.go) return `<div class="m-text">${esc(c.name)}</div>`;
+    const on = c.cat !== undefined && c.cat === selCat && c.sub === selSub;
+    return `<button class="m-child ${on ? 'active' : ''}" onclick="pickChild(${j})">${esc(c.name)}</button>`;
+  }).join('');
+
+  const feat = books.slice(-3).reverse();
+  const right = '<h3>📖 หนังสือมาใหม่</h3>' + (feat.length ? feat.map(b =>
+    `<button class="m-book" onclick="openBook(${Number(b.id)})">
+       <img class="cover" src="${esc(b.cover) || PLACEHOLDER}" alt="" onerror="this.onerror=null;this.src=PLACEHOLDER">
+       <span><strong>${esc(b.title)}</strong><br><small>${esc(b.author)}</small></span>
+     </button>`).join('') : '<small>ยังไม่มีหนังสือ</small>');
+
+  box.innerHTML = `<div class="mega-inner">
+    <div class="mega-left">${left}</div>
+    <div class="mega-mid">${mid}</div>
+    <div class="mega-right">${right}</div></div>`;
+  box.classList.add('show'); bg.classList.add('show');
+}
+
+// ===== แสดงผล =====
+function renderAuth() {
+  $('authArea').innerHTML = me
+    ? `<span class="hello">👤 ${esc(me.name)}${isAdmin() ? '<span class="badge-admin">แอดมิน</span>' : ''}</span>
+       <button class="outline" onclick="logout()">ออกจากระบบ</button>`
+    : `<button class="outline" onclick="openAuth('login')">เข้าสู่ระบบ</button>
+       <button onclick="openAuth('register')">สมัครสมาชิก</button>`;
 }
 
 function catLabel(b) {
@@ -210,53 +291,171 @@ function catLabel(b) {
   return `<span class="tag">${c.icon} ${esc(c.name)}</span>` + (s ? `<br><small>• ${esc(s)}</small>` : '');
 }
 
-// ===== แสดงผล =====
-function render() {
+function renderAll() {
   renderAuth();
-  renderCategories();
-  const q = document.getElementById('search').value.toLowerCase();
-
-  const bookRows = BOOKS
-    .filter(b => selCat === 'all' || b.cat === selCat)
-    .filter(b => selSub === 'all' || b.sub === selSub)
-    .filter(b => b.title.toLowerCase().includes(q) || (b.author || '').toLowerCase().includes(q))
-    .map(b => {
-      const loan = loanOf(b.id);
-      let btn;
-      if (!loan) btn = `<button onclick="borrowBook(${b.id})">ยืม</button>`;
-      else if (loan.username === currentUser) btn = `<button onclick="returnBook(${b.id})">คืน</button>`;
-      else btn = '<small>มีผู้ยืมอยู่</small>';
-      return `
-      <tr>
-        <td><img class="cover" src="${b.cover || PLACEHOLDER}" alt=""
-             onerror="this.onerror=null;this.src=PLACEHOLDER"></td>
-        <td><strong>${esc(b.title)}</strong><br><small>${esc(b.author)}</small></td>
-        <td>${catLabel(b)}</td>
-        <td class="${loan ? 'late' : 'ok'}">${loan ? 'ถูกยืม' : 'ว่าง'}</td>
-        <td>${btn}</td>
-      </tr>`;
-    }).join('');
-  document.getElementById('bookTable').innerHTML =
-    bookRows || '<tr><td colspan="5">ไม่มีหนังสือในหมวดนี้</td></tr>';
-
-  const now = new Date();
-  const loanRows = loans
-    .filter(l => !l.returned)
-    .map(l => {
-      const book = BOOKS.find(b => b.id === l.bookId);
-      const due = new Date(l.due);
-      const late = now > due;
-      const mine = l.username === currentUser ? ' (คุณ)' : '';
-      return `
-        <tr>
-          <td>${book ? esc(book.title) : '-'}</td>
-          <td>${esc(l.member)}${mine}</td>
-          <td>${due.toLocaleDateString('th-TH')}</td>
-          <td class="${late ? 'late' : 'ok'}">${late ? 'เกินกำหนด' : 'ปกติ'}</td>
-        </tr>`;
-    }).join('');
-  document.getElementById('loanTable').innerHTML =
-    loanRows || '<tr><td colspan="4">ไม่มีรายการยืม</td></tr>';
+  renderNav();
+  renderMega();
+  $('mainView').style.display = view === 'main' ? 'block' : 'none';
+  $('adminView').style.display = view === 'admin' ? 'block' : 'none';
+  if (view === 'admin') renderAdmin(); else renderMain();
 }
 
-render();
+function renderMain() {
+  let info = '';
+  if (selCat !== 'all') {
+    const c = CATEGORIES[selCat];
+    const s = selSub !== 'all' ? ' › ' + c.subs[selSub] : '';
+    info = `<div class="filter"><span>กำลังแสดง: ${c.icon} ${esc(c.name)}${esc(s)}</span>
+            <button class="danger small" onclick="clearFilter()">ล้างตัวกรอง ✕</button></div>`;
+  }
+  $('filterInfo').innerHTML = info;
+
+  const q = $('search').value.toLowerCase();
+  const myOpen = me ? loans.filter(l => isOpen(l) && l.username === me.username) : [];
+
+  const rows = books
+    .filter(b => selCat === 'all' || b.cat === selCat)
+    .filter(b => selSub === 'all' || b.sub === selSub)
+    .filter(b => String(b.title).toLowerCase().includes(q) || String(b.author || '').toLowerCase().includes(q))
+    .map(b => {
+      const mine = myOpen.find(l => String(l.bookId) === String(b.id));
+      let btn;
+      if (mine) btn = `<button class="green" onclick="returnBook('${esc(mine.id)}')">คืน</button>`;
+      else if (b.available > 0) btn = `<button onclick="borrowBook(${Number(b.id)})">ยืม</button>`;
+      else btn = '<small>ถูกยืมหมด</small>';
+      return `<tr>
+        <td><img class="cover" src="${esc(b.cover) || PLACEHOLDER}" alt="" onerror="this.onerror=null;this.src=PLACEHOLDER"></td>
+        <td><strong>${esc(b.title)}</strong><br><small>${esc(b.author)}</small></td>
+        <td>${catLabel(b)}</td>
+        <td class="${b.available > 0 ? 'ok' : 'late'}">${b.available}/${b.qty} เล่ม</td>
+        <td>${btn}</td></tr>`;
+    }).join('');
+  $('bookTable').innerHTML = rows || '<tr><td colspan="5" class="empty">ไม่มีหนังสือในหมวดนี้</td></tr>';
+
+  let lrows;
+  if (!me) {
+    lrows = '<tr><td colspan="5" class="empty">เข้าสู่ระบบเพื่อดูรายการยืมของคุณ</td></tr>';
+  } else {
+    lrows = myOpen.map(l => {
+      const b = bookOf(l.bookId);
+      return `<tr>
+        <td>${b ? esc(b.title) : '-'}</td>
+        <td>${fmt(l.borrowDate)}</td><td>${fmt(l.due)}</td>
+        <td class="${isLate(l) ? 'late' : 'ok'}">${isLate(l) ? 'เกินกำหนด' : 'ปกติ'}</td>
+        <td><button class="green small" onclick="returnBook('${esc(l.id)}')">คืน</button></td></tr>`;
+    }).join('') || '<tr><td colspan="5" class="empty">คุณไม่มีหนังสือที่ยืมอยู่</td></tr>';
+  }
+  $('loanTable').innerHTML = lrows;
+}
+
+// ===== หน้าแอดมิน =====
+function setAdminTab(t) { adminTab = t; renderAdmin(); }
+let showReturned = false;
+function toggleReturned() { showReturned = !showReturned; renderAdmin(); }
+
+function renderAdmin() {
+  if (!isAdmin()) return;
+  const open = loans.filter(isOpen);
+  const total = books.reduce((s, b) => s + (Number(b.qty) || 0), 0);
+  $('stats').innerHTML =
+    `<div class="stat"><b>${books.length}</b><span>ชื่อเรื่อง</span></div>
+     <div class="stat"><b>${total}</b><span>เล่มทั้งหมด</span></div>
+     <div class="stat"><b>${open.length}</b><span>กำลังถูกยืม</span></div>
+     <div class="stat ${open.filter(isLate).length ? 'warn' : ''}"><b>${open.filter(isLate).length}</b><span>เกินกำหนด</span></div>`;
+
+  const tabs = [['loans', '🕮 รายการยืม'], ['books', '📚 จัดการหนังสือ'], ['users', '👥 สมาชิก']];
+  $('adminTabs').innerHTML = tabs.map(t =>
+    `<button class="${adminTab === t[0] ? 'active' : ''}" onclick="setAdminTab('${t[0]}')">${t[1]}</button>`).join('');
+
+  let h = '';
+  if (adminTab === 'loans') {
+    const list = loans.slice().filter(l => showReturned || isOpen(l))
+      .sort((a, b) => (isOpen(b) - isOpen(a)) || (new Date(a.due) - new Date(b.due)));
+    h = `<div class="toolbar"><label><input type="checkbox" style="width:auto" ${showReturned ? 'checked' : ''} onchange="toggleReturned()"> แสดงรายการที่คืนแล้วด้วย</label></div>
+      <div class="scroll"><table>
+      <thead><tr><th>หนังสือ</th><th>ผู้ยืม</th><th>วันที่ยืม</th><th>กำหนดคืน</th><th>สถานะ</th><th>จัดการ</th></tr></thead><tbody>` +
+      (list.map(l => {
+        const b = bookOf(l.bookId);
+        const st = !isOpen(l) ? `<span class="ok">คืนแล้ว ${fmt(l.returnDate)}</span>`
+          : isLate(l) ? '<span class="late">เกินกำหนด</span>' : '<span class="ok">ปกติ</span>';
+        return `<tr><td>${b ? esc(b.title) : '-'}</td>
+          <td>${esc(l.member)}<br><small>@${esc(l.username)}</small></td>
+          <td>${fmt(l.borrowDate)}</td><td>${fmt(l.due)}</td><td>${st}</td>
+          <td>${isOpen(l) ? `<button class="green small" onclick="returnBook('${esc(l.id)}')">รับคืน</button>` : ''}</td></tr>`;
+      }).join('') || '<tr><td colspan="6" class="empty">ไม่มีรายการ</td></tr>') +
+      '</tbody></table></div>';
+  } else if (adminTab === 'books') {
+    h = `<div class="toolbar"><button onclick="openBookForm()">➕ เพิ่มหนังสือ</button></div>
+      <div class="scroll"><table>
+      <thead><tr><th>ปก</th><th>ชื่อ / ผู้แต่ง</th><th>หมวดหมู่</th><th>คงเหลือ/ทั้งหมด</th><th>จัดการ</th></tr></thead><tbody>` +
+      (books.map(b => `<tr>
+        <td><img class="cover" src="${esc(b.cover) || PLACEHOLDER}" alt="" onerror="this.onerror=null;this.src=PLACEHOLDER"></td>
+        <td><strong>${esc(b.title)}</strong><br><small>${esc(b.author)}</small></td>
+        <td>${catLabel(b)}</td>
+        <td>${b.available}/${b.qty}</td>
+        <td><button class="small" onclick="openBookForm(${Number(b.id)})">แก้ไข</button>
+            <button class="danger small" onclick="deleteBook(${Number(b.id)})">ลบ</button></td></tr>`).join('')
+        || '<tr><td colspan="5" class="empty">ยังไม่มีหนังสือ กด "เพิ่มหนังสือ"</td></tr>') +
+      '</tbody></table></div>';
+  } else {
+    h = `<div class="scroll"><table>
+      <thead><tr><th>ชื่อ</th><th>ชื่อผู้ใช้</th><th>สิทธิ์</th><th>จัดการ</th></tr></thead><tbody>` +
+      users.map((u, i) => `<tr><td>${esc(u.name)}</td><td>@${esc(u.username)}</td>
+        <td>${u.role === 'admin' ? '<span class="badge-admin">แอดมิน</span>' : 'สมาชิก'}</td>
+        <td>${u.username === me.username ? '<small>(คุณ)</small>'
+          : `<button class="small" onclick="toggleRole(${i})">${u.role === 'admin' ? 'ถอดสิทธิ์แอดมิน' : 'ตั้งเป็นแอดมิน'}</button>`}</td></tr>`).join('') +
+      '</tbody></table></div>';
+  }
+  $('adminBody').innerHTML = h;
+}
+
+// ===== จัดการหนังสือ (แอดมิน) =====
+function fillSubs(cat, selected) {
+  const subs = (CATEGORIES[cat] || {}).subs || {};
+  $('bSub').innerHTML = Object.keys(subs).map(k =>
+    `<option value="${k}" ${k === selected ? 'selected' : ''}>${esc(subs[k])}</option>`).join('');
+}
+function openBookForm(id) {
+  const b = id ? bookOf(id) : null;
+  $('bookFormTitle').textContent = b ? 'แก้ไขหนังสือ' : 'เพิ่มหนังสือ';
+  $('bCat').innerHTML = Object.keys(CATEGORIES).map(k =>
+    `<option value="${k}" ${b && b.cat === k ? 'selected' : ''}>${esc(CATEGORIES[k].name)}</option>`).join('');
+  $('bId').value = b ? b.id : '';
+  $('bTitle').value = b ? b.title : '';
+  $('bAuthor').value = b ? b.author : '';
+  $('bCover').value = b ? b.cover : '';
+  $('bQty').value = b ? b.qty : 1;
+  fillSubs($('bCat').value, b ? b.sub : null);
+  $('bookModal').classList.add('show');
+}
+function closeBookForm() { $('bookModal').classList.remove('show'); }
+function saveBookForm() {
+  const book = {
+    id: $('bId').value, title: $('bTitle').value.trim(), author: $('bAuthor').value.trim(),
+    cat: $('bCat').value, sub: $('bSub').value, cover: $('bCover').value.trim(),
+    qty: Number($('bQty').value) || 0,
+  };
+  if (!book.title) return alert('กรุณาใส่ชื่อหนังสือ');
+  closeBookForm();
+  act(() => api('saveBook', { book }));
+}
+function deleteBook(id) {
+  const b = bookOf(id);
+  if (!confirm('ลบ "' + (b ? b.title : '') + '" ?')) return;
+  act(() => api('deleteBook', { bookId: id }));
+}
+function toggleRole(i) {
+  const u = users[i];
+  const role = u.role === 'admin' ? 'member' : 'admin';
+  if (!confirm((role === 'admin' ? 'ตั้ง ' : 'ถอดสิทธิ์แอดมินของ ') + u.name + '?')) return;
+  act(() => api('setRole', { target: u.username, role }));
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeMega(); closeAuth(); closeBookForm(); }
+});
+
+// ===== เริ่มทำงาน =====
+renderAll();
+setBusy(true);
+refresh().catch(e => alert('โหลดข้อมูลไม่สำเร็จ: ' + e.message)).finally(() => setBusy(false));
